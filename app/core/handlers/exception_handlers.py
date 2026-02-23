@@ -8,6 +8,10 @@ async def app_exception_handler(
     request: Request,
     exc: AppException
 ):
+    """
+    Captura las excepciones personalizadas de la aplicación (AppException)
+    y retorna una respuesta JSON estructurada con el esquema ApiError.
+    """
     return JSONResponse(
         status_code=exc.code,
         content=ApiError(
@@ -21,11 +25,17 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError
 ):
+    """
+    Captura los errores de validación de FastAPI (Pydantic) y los
+    formatea bajo el esquema estándar de la aplicación.
+    """
+    # Podemos extraer más detalle de exc.errors() si quisiéramos ser más específicos
     return JSONResponse(
         status_code=400,
         content=ApiError(
             codigo=400,
             mensaje="Datos inválidos",
+            resultado=exc.errors() # Agregamos el detalle de la validación para que el front sepa qué falló
         ).model_dump()
     )
 

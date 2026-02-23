@@ -1,36 +1,62 @@
-from fastapi import Query
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Generic, TypeVar, Optional, Any, List
+from enum import Enum
 
-SortField = Literal[
-    "username",
-    "email",
-    "date_joined",
-    "first_name",
-    "last_name",
-    "is_active",
-    "is_deleted",
-    "is_superuser",
-    "email_verified",
-    "date_of_birth",
-    "nationality",
-    "occupation",
-    "gender",
-    "role",
-]
+# Tipo genérico para envolver cualquier modelo en una respuesta paginada o estándar
+T = TypeVar("T")
 
-OrderField = Literal["asc", "desc"]
+class SortOrder(str, Enum):
+    """Define las direcciones de ordenamiento permitidas."""
+    ASC = "asc"
+    DESC = "desc"
 
-class CommonQueryParams:
-    def __init__(  #no tocar
-        self,
-        page: int = Query(1, ge=1, description="Número de página"), #página actual
-        limit: int = Query(10, ge=1, le=100, description="Cantidad de usuarios por página (por defecto 10)."), #límite de items por página
-        sort: Optional[SortField] = Query(None, description="Campo por el cual ordenar",), #campo para ordenar
-        order: OrderField = Query("asc", description="Orden de los resultados",), #orden ascendente o descendente
-    ):
+class ApiResponse(BaseModel, Generic[T]):
+    """Esquema genérico para respuestas exitosas con datos."""
+    codigo: int = 200
+    mensaje: str = "Operación exitosa"
+    resultado: Optional[T] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
-        self.page = page
-        self.limit = limit
-        self.sort = sort
-        self.order = order
-        self.skip = (page - 1) * limit
+class ApiResponseSimple(BaseModel):
+    """
+    Esquema para respuestas que no devuelven un objeto complejo.
+    Basado en el estándar observado en la documentación del proyecto.
+    """
+    codigo: int = 200
+    mensaje: str
+    resultado: dict = Field(default_factory=dict)
+
+class ApiError(BaseModel):
+    """Estructura estándar para reportar errores al cliente."""
+    codigo: int
+    mensaje: str
+    resultado: Optional[Any] = None
+
+class PaginationParams(BaseModel):
+    """Parámetros base para solicitudes de listado paginado."""
+    page: int = Field(1, ge=1, description="Número de página (mínimo 1)")
+    limit: int = Field(10, ge=1, le=100, description="Registros por página (máximo 100)")
+
+class SortingParams(BaseModel):
+    """Parámetros para controlar el ordenamiento de los resultados."""
+    sort_by: str = Field("created_at", description="Campo por el cual ordenar")
+    order: SortOrder = Field(SortOrder.DESC, description="Dirección del ordenamiento")
+
+class SearchParams(BaseModel):
+    """Parámetros para realizar búsquedas globales o filtradas."""
+    search: Optional[str] = Field(None, description="Texto de búsqueda general")
+    is_active: Optional[bool] = Field(None, description="Filtrar por estado activo/inactivo")
+
+class PagedResult(BaseModel, Generic[T]):
+    """
+    Estructura genérica para resultados paginados.
+    Sustituye y generaliza esquemas específicos de listado.
+    """
+    total: int
+    page: int
+    limit: int
+    data: List[T]
+
+    model_config = ConfigDict(from_attributes=True)
+

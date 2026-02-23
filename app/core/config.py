@@ -1,54 +1,75 @@
-from pydantic_settings import BaseSettings
-from typing import List, Optional, Literal
-from pydantic import validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Literal, Optional, Any
+from pydantic import field_validator, AnyHttpUrl, json_schema
 import json
 
 class Settings(BaseSettings):
-    # Project
-    PROJECT_NAME: str = "API REST"
+    # --- Project Configuration ---
+    PROJECT_NAME: str = "API REST Usuarios"
     VERSION: str = "1.0.0"
     DEBUG: bool = False
-
-    #Define el campo ENVIRONMENT
     ENVIRONMENT: Literal["development", "production", "testing"] = "development"
     
-    # API
-    API_V1_STR: str = "/api" 
+    # --- API Configuration ---
+    API_V1_STR: str = "/api"
     
-    # CORS - Pydantic parsea automáticamente el JSON del .env
-    BACKEND_CORS_ORIGINS: List[str] = []
-    
-    # Database
-    # Para SQLite síncrono (para pruebas rápidas)
-    # DATABASE_URL: str = "sqlite:///./test.db"
-    DATABASE_URL: str = "" 
-    
-    # Security
-    SECRET_KEY: str = ""
+    # --- CORS Configuration ---
+    # Pydantic parsea automáticamente el JSON del .env
+    # Se utiliza Any para manejar la entrada desde el .env que viene como string
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, (list, str)):
+            return v
+        raise ValueError(v)
+
+    # --- PostgreSQL Configuration ---
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
+    POSTGRES_PORT: int = 5432
+    DATABASE_URL: Optional[str] = None
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: Optional[str], info: Any) -> Any:
+        if isinstance(v, str) and v:
+            return v
+        
+        # Si no se proporciona DATABASE_URL, se puede construir desde los campos individuales
+        # Nota: info.data contiene los valores ya validados de los otros campos
+        return v
+
+    # --- Security & Authentication ---
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
-    # Pagination defaults
-    DEFAULT_PAGE_SIZE: int = 10
-    MAX_PAGE_SIZE: int = 100
 
-     # Validaciones para seguridad
-    @validator('SECRET_KEY') # el decorador aplica esta función al campo SECRET_KEY
-    def validate_secret_key(cls, v):  # cls=clase, v=valor del campo
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
         if not v:
             raise ValueError("SECRET_KEY no puede estar vacía")
         if len(v) < 32:
-            raise ValueError("SECRET_KEY debe tener al menos 32 caracteres")
+            raise ValueError("SECRET_KEY debe tener al menos 32 caracteres para ser segura")
         return v
 
-    @validator('DATABASE_URL') # Aplica a DATABASE_URL
-    def validate_database_url(cls, v):
-        if not v:
-            raise ValueError("DATABASE_URL no puede estar vacía")
-        return v
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # --- Pagination Defaults ---
+    DEFAULT_PAGE_SIZE: int = 10
+    MAX_PAGE_SIZE: int = 100
 
+    # --- Pydantic Config ---
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"
+    )
+
+# Instancia de configuración para ser importada en el resto de la app
 settings = Settings()
+

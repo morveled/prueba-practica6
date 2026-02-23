@@ -1,415 +1,273 @@
-from fastapi import APIRouter, Depends, Query, Path, HTTPException, Body, status
-from typing import Optional, Literal
+from fastapi import APIRouter, Depends, Query, Path, Body, status
+from typing import Optional, List, Dict, Any
 from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_user_service, get_current_user_id, get_current_user_id_flexible
+from app.core.database import get_db
+from app.dependencies import get_user_service, get_current_user_id_flexible
 from app.services.user_service import UserService
 from app.schemas.response import (
-    ApiResponse, 
-    ApiError, 
-    ApiResponseUserList, 
-    ApiResponseUserBasic, 
-    ApiResponseUser, 
-    ApiResponseUserDelete, 
-    ApiResponseUserRestore, 
-    ApiResponseUserEmailVerify, 
-    ApiResponseUserToggleActive,
-    ApiResponseSimple
-    )
+    ApiResponse,
+    ApiError,
+    ApiResponseSimple,
+    PagedResponse
+)
 from app.schemas.user import (
-    User,
+    User as UserSchema,
     UserCreateRequest,
-    UserBasic, 
+    UserBasic,
     UserUpdateRequest,
     UserPartialUpdateRequest,
     UserToggleActiveResult,
+    UserDeleteResult,
+    UserRestoreResult,
+    UserEmailVerifyResult,
     PasswordChangeRequest,
     PasswordResetRequest
 )
-from app.schemas.common import CommonQueryParams
-from app.schemas.user import User as UserSchema # ← Usar alias para claridad
-from app.core.exceptions.user_exceptions import UserAlreadyExistsException  # ← Agregar esta importación
 
-router = APIRouter(  )
+# Se crea el router para el módulo de usuarios
+router = APIRouter()
 
-@router.get(  #endpoint para listar usuarios metodo GET
+# ---------- READ ----------
+
+@router.get(
     "",
-    response_model=ApiResponseUserList,
-    responses={
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[PagedResponse[UserSchema]],
     status_code=status.HTTP_200_OK,
     summary="Obtener todos los usuarios",
     description="Devuelve una lista paginada de usuarios con filtros y ordenamiento."
 )
 async def list_users(
-    params: CommonQueryParams = Depends(),
-    is_active: Optional[bool] = None,
-    is_deleted: Optional[bool] = None,
-    is_superuser: Optional[bool] = None,
-    email_verified: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1, description="Número de página"),
+    limit: int = Query(10, ge=1, le=100, description="Registros por página"),
+    search: Optional[str] = Query(None, description="Buscar por username o email"),
+    is_active: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    is_deleted: bool = Query(False, description="Filtrar por borrado lógico"),
+    sort_by: str = Query("created_at", description="Campo por el cual ordenar"),
+    order: str = Query("desc", description="Dirección del ordenamiento (asc/desc)"),
     service: UserService = Depends(get_user_service),
 ):
-    users, total = await service.list_users(
-        page=params.page,
-        limit=params.limit,
-        sort=params.sort,
-        order=params.order,
+    result = await service.get_multi_users(
+        db, 
+        page=page, 
+        limit=limit,
+        sort_by=sort_by,
+        order=order,
+        search=search,
         is_active=is_active,
-        is_deleted=is_deleted,
-        is_superuser=is_superuser,
-        email_verified=email_verified,
+        is_deleted=is_deleted
     )
-
-    # CONVERTIR objetos SQLAlchemy a UserSchema
-    user_schemas = [UserSchema.from_orm(user) for user in users]
-
-    return ApiResponseUserList(
+    
+    # Adaptar el resultado del repositorio al esquema de PagedResponse
+    paged_data = PagedResponse[UserSchema](
+        total=result["total"],
+        page=result["page"],
+        limit=result["limit"],
+        data=result["items"]
+    )
+    
+    return ApiResponse[PagedResponse[UserSchema]](
         codigo=200,
         mensaje="Usuarios obtenidos exitosamente.",
-        resultado={
-            "total": total,
-            "page": params.page,
-            "limit": params.limit,
-            "users": user_schemas,
-        },
+        resultado=paged_data
     )
 
-@router.post( #endpoint para crear usuario metodo POST
-    "",
-    response_model=ApiResponseUserBasic,#,,,kljkhh
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        400: {"model": ApiError, "description": "Datos inválidos"},
-        409: {"model": ApiError, "description": "Usuario ya existe"},
-        500: {"model": ApiError, "description": "Error interno del servidor"},
-    },
-    summary="Crear un nuevo usuario",
-    description="Crea un nuevo usuario con la información proporcionada."
-
-)
-async def create_user(
-    user_data: UserCreateRequest = Body(..., description="Datos del nuevo usuario"),
-    service: UserService = Depends(get_user_service),
-):
-    new_user = await service.register_user(user_data)
-    user_basic = UserBasic.from_orm(new_user)
-
-    return ApiResponseUserBasic(
-        codigo=201,
-        mensaje="Usuario creado exitosamente.",
-        resultado=user_basic,
-    )
-
-@router.get(  #endpoint para obtener usuario por ID metodo GET
+@router.get(
     "/{id}",
-    response_model=ApiResponseUser,
-    responses={
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[UserSchema],
     status_code=status.HTTP_200_OK,
     summary="Obtener usuario por ID",
-    description="Devuelve la información de un usuario específico por su ID."
+    description="Devuelve la información detallada de un usuario específico por su ID."
 )
 async def get_user_by_id(
     id: UUID = Path(..., description="ID del usuario a obtener"),
+    db: AsyncSession = Depends(get_db),
     service: UserService = Depends(get_user_service),
 ):
-    user = await service.get_user_by_id(id)
-    user_schema = UserSchema.from_orm(user)
-
-    return ApiResponseUser(
+    user = await service.get_user_by_id(db, user_id=id, include_inactive=True)
+    return ApiResponse[UserSchema](
         codigo=200,
         mensaje="Usuario obtenido exitosamente.",
-        resultado=user_schema,
+        resultado=user
     )
 
-@router.put(  #endpoint para actualizar usuario por ID metodo PUT
+# ---------- CREATE ----------
+
+@router.post(
+    "",
+    response_model=ApiResponse[UserBasic],
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear un nuevo usuario",
+    description="Crea un nuevo usuario con la información proporcionada."
+)
+async def create_user(
+    db: AsyncSession = Depends(get_db),
+    user_data: UserCreateRequest = Body(..., description="Datos del nuevo usuario"),
+    service: UserService = Depends(get_user_service),
+):
+    new_user = await service.create_user(db, obj_in=user_data)
+    return ApiResponse[UserBasic](
+        codigo=201,
+        mensaje="Usuario creado exitosamente.",
+        resultado=UserBasic.model_validate(new_user)
+    )
+
+# ---------- UPDATE ----------
+
+@router.put(
     "/{id}",
-    response_model=ApiResponseUserBasic,
-    responses={
-        400: {"model": ApiError, "description": "Datos inválidos"},
-        401: {"model": ApiError},
-        404: {"model": ApiError},
-        409: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[UserBasic],
     status_code=status.HTTP_200_OK,
-    summary="Actualizar usuario por ID",
-    description="Actualiza la información de un usuario específico por su ID."
+    summary="Actualizar usuario por ID (Completo)",
+    description="Actualiza toda la información de un usuario específico."
 )
 async def update_user(
+    db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del usuario a actualizar"),
-    user_data: UserUpdateRequest = Body(..., description="Datos actualizados del usuario"),
+    user_data: UserUpdateRequest = Body(..., description="Datos completos del usuario"),
     service: UserService = Depends(get_user_service),
-    #current_user_id: UUID = Depends(get_current_user_id),  #Obtiene ID del token    descomentar cuando ya tenga la validacion del token
-    current_user_id: UUID = Body(..., embed=True, description="ID del usuario que realiza la acción")  # Recibe en body / solo en desarrollo
 ):
-    updated_user = await service.update_user_full(
-        user_id=id,
-        update_data=user_data,
-        current_user_id=current_user_id  # <- Pasa el ID del usuario actual
-    )
-    user_basic = UserBasic.from_orm(updated_user)
-
-    return ApiResponseUserBasic(
+    updated_user = await service.update_user(db, user_id=id, obj_in=user_data)
+    return ApiResponse[UserBasic](
         codigo=200,
         mensaje="Usuario actualizado exitosamente.",
-        resultado=user_basic,
+        resultado=UserBasic.model_validate(updated_user)
     )
 
-@router.patch(  #endpoint para actualizar parcialmente usuario por ID metodo PATCH
+@router.patch(
     "/{id}",
-    response_model=ApiResponseUserBasic,
-    responses={
-        400: {"model": ApiError, "description": "Datos inválidos"},
-        404: {"model": ApiError},
-        409: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[UserBasic],
     status_code=status.HTTP_200_OK,
     summary="Actualizar parcialmente usuario por ID",
-    description="Actualiza parcialmente un usuario específico por su ID."
+    description="Actualiza solo los campos enviados del usuario."
 )
 async def partial_update_user(
+    db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del usuario a actualizar parcialmente"),
-    user_data: UserPartialUpdateRequest = Body(..., description="Datos parcialmente actualizados del usuario"),
+    user_data: UserPartialUpdateRequest = Body(..., description="Datos parciales del usuario"),
     service: UserService = Depends(get_user_service),
-    #current_user_id: UUID = Depends(get_current_user_id),  #Obtiene ID del token    descomentar cuando ya tenga la validacion del token
-    current_user_id: UUID = Body(..., embed=True, description="ID del usuario que realiza la acción")  # Recibe en body / solo en desarrollo
 ):
-    updated_user = await service.update_user_partial(
-        user_id=id,
-        update_data=user_data,
-        current_user_id=current_user_id  # <- Pasa el ID del usuario actual
-    )
-    user_basic = UserBasic.from_orm(updated_user)
-
-    return ApiResponseUserBasic(
+    updated_user = await service.update_user(db, user_id=id, obj_in=user_data)
+    return ApiResponse[UserBasic](
         codigo=200,
         mensaje="Usuario actualizado parcialmente exitosamente.",
-        resultado=user_basic,
+        resultado=UserBasic.model_validate(updated_user)
     )
 
-@router.delete(  #endpoint para eliminar usuario por ID metodo DELETE
-    "/{id}",
-    response_model=ApiResponseUserDelete,
-    responses={
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
-    status_code=status.HTTP_200_OK,
-    summary="Eliminar usuario por ID",
-    description="Si True, elimina permanentemente (hard delete). Por defecto False (soft delete)."
-)
-async def delete_user(
-    id: UUID,
-    hard: bool = Query(False),
-    service: UserService = Depends(get_user_service),
-    current_user_id: UUID = get_current_user_id_flexible()  #modo flexible para desarrollo y producción (aqui se impplementa el dependencies para prod y desarrollo)
-):
-    delete_result = await service.delete_user(
-        user_id=id,
-        current_user_id=current_user_id,  # ID del usuario actual
-        hard_delete=hard
-    )
-
-    return ApiResponseUserDelete(
-        codigo=200,
-        mensaje="Usuario eliminado exitosamente.",
-        resultado=delete_result,
-    )
-
-@router.patch(  #endpoint para restaurar usuario por ID metodo PATCH
-    "/{id}/restore",
-    response_model=ApiResponseUserRestore,
-    responses={
-        400: {"model": ApiError},
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
-    status_code=status.HTTP_200_OK,
-    summary="Restaurar usuario por ID",
-    description="Restaura un usuario eliminado lógicamente (soft delete)."
-)
-async def restore_user(
-    id: UUID = Path(..., description="ID del usuario a restaurar"),
-    service: UserService = Depends(get_user_service),
-    current_user_id: UUID = get_current_user_id_flexible()):
-    restore_result = await service.restore_user(
-        user_id=id,
-        current_user_id=current_user_id  # ID del usuario actual
-    )
-
-    return ApiResponseUserRestore(
-        codigo=200,
-        mensaje="Usuario restaurado exitosamente.",
-        resultado=restore_result,
-    )
-
-@router.post( #endpoint para verificar email metodo POST
-    "/{id}/verify-email",
-    response_model=ApiResponseUserEmailVerify,
-    responses={
-        400: {"model": ApiError},
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
-    status_code=status.HTTP_200_OK,
-    summary="Verificar si un email está verificado",
-    description="Marca el email de un usuario como verificado y actualiza la fecha de verificación en el campo email_verified_at."
-)
-async def verify_email(
-    id: UUID,
-    service: UserService = Depends(get_user_service),
-    current_user_id: UUID = get_current_user_id_flexible()
-):
-    user = await service.verify_email(
-        user_id=id,
-        current_user_id=current_user_id
-    )
-
-    return ApiResponseUserEmailVerify(
-        codigo=200,
-        mensaje="Email verificado exitosamente.",
-        resultado=user,
-    )
-
-@router.patch( #endpoint para activar usuario por ID metodo PATCH
+@router.patch(
     "/{id}/activate",
-    response_model=ApiResponseUserToggleActive,
-    responses={
-        400: {"model": ApiError},
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[UserToggleActiveResult],
     status_code=status.HTTP_200_OK,
     summary="Activar un usuario",
-    description="Activa un usuario (is_active = true)."
+    description="Activa a un usuario que se encontraba inactivo o eliminado lógicamente."
 )
 async def activate_user(
-    id: UUID,
+    db: AsyncSession = Depends(get_db),
+    id: UUID = Path(..., description="ID del usuario a activar"),
     service: UserService = Depends(get_user_service),
-    current_user_id: UUID = Depends(get_current_user_id_flexible)
 ):
-    user = await service.activate_user(
-        user_id=id,
-        current_user_id=current_user_id
-    )
-
-    return ApiResponseUserToggleActive(
+    user = await service.activate_user(db, user_id=id)
+    return ApiResponse[UserToggleActiveResult](
         codigo=200,
         mensaje="Usuario activado exitosamente.",
-        resultado=UserToggleActiveResult(
-            id=user.id,
-            username=user.username,
-            is_active=user.is_active
-        ),
+        resultado=UserToggleActiveResult.model_validate(user)
     )
 
-@router.patch( #endpoint para desactivar usuario por ID metodo PATCH
+@router.patch(
     "/{id}/deactivate",
-    response_model=ApiResponseUserToggleActive,
-    responses={
-        400: {"model": ApiError},
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+    response_model=ApiResponse[UserToggleActiveResult],
     status_code=status.HTTP_200_OK,
     summary="Desactivar un usuario",
-    description="Desactiva un usuario (is_active = false)."
+    description="Desactiva a un usuario sin eliminarlo del sistema."
 )
 async def deactivate_user(
-    id: UUID,
+    db: AsyncSession = Depends(get_db),
+    id: UUID = Path(..., description="ID del usuario a desactivar"),
+    reason: Optional[str] = Query(None, description="Motivo de la desactivación"),
     service: UserService = Depends(get_user_service),
-    current_user_id: UUID = Depends(get_current_user_id_flexible)
 ):
-    user = await service.deactivate_user(
-        user_id=id,
-        current_user_id=current_user_id
-    )
-
-    return ApiResponseUserToggleActive(
+    user = await service.deactivate_user(db, user_id=id, reason=reason)
+    return ApiResponse[UserToggleActiveResult](
         codigo=200,
         mensaje="Usuario desactivado exitosamente.",
-        resultado=UserToggleActiveResult(
-            id=user.id,
-            username=user.username,
-            is_active=user.is_active
-        ),
+        resultado=UserToggleActiveResult.model_validate(user)
     )
 
-@router.post( #endpoint para cambiar contraseña metodo POST
+@router.post(
     "/{id}/change-password",
     response_model=ApiResponseSimple,
-    responses={
-        400: {"model": ApiError},
-        401: {"model": ApiError},
-        403: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
     status_code=status.HTTP_200_OK,
-    summary="Cambiar la contraseña de un usuario",
-    description="Cambia la contraseña de un usuario dado su ID."
+    summary="Cambiar contraseña",
+    description="Cambia la contraseña del usuario previa validación de la actual."
 )
 async def change_user_password(
-    id: UUID,
-    password_data: PasswordChangeRequest,
+    db: AsyncSession = Depends(get_db),
+    id: UUID = Path(..., description="ID del usuario"),
+    password_data: PasswordChangeRequest = Body(...),
     service: UserService = Depends(get_user_service),
-    current_user_id: UUID = Depends(get_current_user_id_flexible)
 ):
     await service.change_password(
-        user_id=id,
-        current_password=password_data.current_password,
-        new_password=password_data.new_password,
-        confirm_password=password_data.confirm_password,
-        current_user_id=current_user_id
+        db, 
+        user_id=id, 
+        current_password=password_data.current_password, 
+        new_password=password_data.new_password
     )
-
     return ApiResponseSimple(
         codigo=200,
         mensaje="Contraseña cambiada exitosamente.",
         resultado={}
     )
 
-@router.post( #endpoint para solicitar restablecimiento de contraseña metodo POST
-    "/request-password-reset",
-    response_model=ApiResponseSimple,
-    responses={
-        400: {"model": ApiError},
-        404: {"model": ApiError},
-        500: {"model": ApiError},
-    },
+# ---------- DELETE & RESTORE ----------
+
+@router.delete(
+    "/{id}",
+    response_model=ApiResponse[UserDeleteResult],
     status_code=status.HTTP_200_OK,
-    summary="Solicitar restablecimiento de contraseña",
-    description="Permite solicitar un restablecimiento de contraseña enviando un enlace o token al correo electrónico registrado del usuario."
+    summary="Eliminar usuario por ID",
+    description="Realiza borrado lógico (por defecto) o físico si hard=true."
 )
-async def request_password_reset(
-    reset_request: PasswordResetRequest,
+async def delete_user(
+    db: AsyncSession = Depends(get_db),
+    id: UUID = Path(..., description="ID del usuario a eliminar"),
+    hard: bool = Query(False, description="Si es True, realiza borrado físico"),
+    reason: Optional[str] = Query(None, description="Motivo de la eliminación"),
     service: UserService = Depends(get_user_service),
+    current_user_id: UUID = Depends(get_current_user_id_flexible)
 ):
-    await service.request_password_reset(
-        reset_request
+    deleted_user = await service.delete_user(
+        db, 
+        user_id=id, 
+        hard_delete=hard, 
+        deleted_by=current_user_id,
+        reason=reason
+    )
+    
+    # En caso de borrado físico exitoso, deleted_user podría ser None o el objeto borrado
+    return ApiResponse[UserDeleteResult](
+        codigo=200,
+        mensaje="Usuario eliminado exitosamente.",
+        resultado=UserDeleteResult.model_validate(deleted_user) if deleted_user else {"id": id, "is_deleted": True}
     )
 
-    return ApiResponseSimple(
+@router.patch(
+    "/{id}/restore",
+    response_model=ApiResponse[UserRestoreResult],
+    status_code=status.HTTP_200_OK,
+    summary="Restaurar usuario por ID",
+    description="Restaura un usuario que fue borrado de forma lógica."
+)
+async def restore_user(
+    db: AsyncSession = Depends(get_db),
+    id: UUID = Path(..., description="ID del usuario a restaurar"),
+    service: UserService = Depends(get_user_service),
+):
+    restored_user = await service.restore_user(db, user_id=id)
+    return ApiResponse[UserRestoreResult](
         codigo=200,
-        mensaje="Instrucciones para restablecer la contraseña enviadas al correo electrónico.",
-        resultado={}
+        mensaje="Usuario restaurado exitosamente.",
+        resultado=UserRestoreResult.model_validate(restored_user)
     )
+

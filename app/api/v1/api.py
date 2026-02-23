@@ -1,7 +1,13 @@
 from fastapi import APIRouter
-
 from app.api.v1.endpoints import users
 
-api_router = APIRouter() #se crea el router principal de la API v1
+# Se crea el router principal para la versión 1 de la API
+api_router = APIRouter()
 
-api_router.include_router(users.router, prefix="/users", tags=["users"]) #se incluyen las rutas de usuarios con el prefijo /users y la etiqueta "users"
+# Se incluyen los endpoints del módulo de usuarios
+api_router.include_router(
+    users.router, 
+    prefix="/users", 
+    tags=["users"]
+)
+
