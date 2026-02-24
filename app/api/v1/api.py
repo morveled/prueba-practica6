@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import users
+from app.api.v1.endpoints import users, products
 
 # Se crea el router principal para la versión 1 de la API
 api_router = APIRouter()
@@ -9,5 +9,12 @@ api_router.include_router(
     users.router, 
     prefix="/users", 
     tags=["users"]
+)
+
+# Se incluyen los endpoints del módulo de productos
+api_router.include_router(
+    products.router,
+    prefix="/products",
+    tags=["products"]
 )
 
