@@ -45,9 +45,11 @@ class Settings(BaseSettings):
         return v
 
     # --- Security & Authentication ---
+    # ── Seguridad y JWT (sección 7.4 / 7.10 de la guía) ──
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     @field_validator("SECRET_KEY")
     @classmethod

@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_product_service
+from app.dependencies import get_product_service, get_current_active_user, get_current_superuser
 from app.services.product_service import ProductService
 from app.schemas.response import (
     ApiResponse,
@@ -21,6 +21,7 @@ from app.schemas.product import (
     ProductRestoreResult,
     ProductToggleStatusResult,
 )
+from app.schemas.auth import CurrentUser
 
 # Se crea el router para el módulo de productos
 router = APIRouter()
@@ -107,6 +108,7 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
     product_data: ProductCreateRequest = Body(..., description="Datos del nuevo producto"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     new_product = await service.create_product(db, obj_in=product_data)
     return ApiResponse[ProductBasic](
@@ -131,6 +133,7 @@ async def update_product(
     id: UUID = Path(..., description="ID del producto a actualizar"),
     product_data: ProductUpdateRequest = Body(..., description="Datos completos del producto"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     updated_product = await service.update_product(db, product_id=id, obj_in=product_data)
     return ApiResponse[ProductBasic](
@@ -152,6 +155,7 @@ async def partial_update_product(
     id: UUID = Path(..., description="ID del producto a actualizar parcialmente"),
     product_data: ProductPartialUpdateRequest = Body(..., description="Datos parciales del producto"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     updated_product = await service.update_product(db, product_id=id, obj_in=product_data)
     return ApiResponse[ProductBasic](
@@ -172,6 +176,7 @@ async def activate_product(
     db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del producto a activar"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     product = await service.activate_product(db, product_id=id)
     return ApiResponse[ProductToggleStatusResult](
@@ -192,6 +197,7 @@ async def deactivate_product(
     db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del producto a desactivar"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     product = await service.deactivate_product(db, product_id=id)
     return ApiResponse[ProductToggleStatusResult](
@@ -216,6 +222,7 @@ async def delete_product(
     id: UUID = Path(..., description="ID del producto a eliminar"),
     hard: bool = Query(False, description="Si es True, realiza borrado físico"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     deleted_product = await service.delete_product(db, product_id=id, hard_delete=hard)
 
@@ -243,6 +250,7 @@ async def restore_product(
     db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del producto a restaurar"),
     service: ProductService = Depends(get_product_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     restored_product = await service.restore_product(db, product_id=id)
     return ApiResponse[ProductRestoreResult](

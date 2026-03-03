@@ -26,11 +26,20 @@ async def lifespan(app: FastAPI):
 
 
 # Creamos la instancia principal de FastAPI
+# swagger_ui_init_oauth configura el botón "Authorize" en Swagger (sección 7.12)
 app = FastAPI(
     title="Users & Products API",
-    description="API para la gestión de usuarios y productos con FastAPI y SQLModel",
-    version="2.0.0",
-    lifespan=lifespan
+    description=(
+        "API para la gestión de usuarios y productos con FastAPI y SQLModel.\n\n"
+        "## Autenticación\n"
+        "La API utiliza **JWT (JSON Web Tokens)** con tokens de acceso y refresco.\n\n"
+        "1. Regístrate en `POST /api/v1/auth/register` o inicia sesión en `POST /api/v1/auth/login`\n"
+        "2. Usa el botón **Authorize** 🔒 para ingresar tu access token\n"
+        "3. Los endpoints protegidos requieren autenticación\n"
+    ),
+    version="3.0.0",
+    lifespan=lifespan,
+    swagger_ui_init_oauth={},
 )
 
 # ---------- REGISTRO DE MANEJADORES DE EXCEPCIONES ----------
@@ -54,6 +63,8 @@ async def root():
     return {
         "mensaje": "¡Bienvenido a la Users & Products API!",
         "estado": "Operativa",
-        "version": "2.0.0"
+        "version": "3.0.0",
+        "docs": "/docs",
+        "auth": "/api/v1/auth/login"
     }
 

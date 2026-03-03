@@ -4,7 +4,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_user_service, get_current_user_id_flexible
+from app.dependencies import (
+    get_user_service,
+    get_current_active_user,
+    get_current_superuser,
+)
 from app.services.user_service import UserService
 from app.schemas.response import (
     ApiResponse,
@@ -25,6 +29,7 @@ from app.schemas.user import (
     PasswordChangeRequest,
     PasswordResetRequest
 )
+from app.schemas.auth import CurrentUser
 
 # Se crea el router para el módulo de usuarios
 router = APIRouter()
@@ -48,6 +53,7 @@ async def list_users(
     sort_by: str = Query("created_at", description="Campo por el cual ordenar"),
     order: str = Query("desc", description="Dirección del ordenamiento (asc/desc)"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     result = await service.get_multi_users(
         db, 
@@ -85,6 +91,7 @@ async def get_user_by_id(
     id: UUID = Path(..., description="ID del usuario a obtener"),
     db: AsyncSession = Depends(get_db),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     user = await service.get_user_by_id(db, user_id=id, include_inactive=True)
     return ApiResponse[UserSchema](
@@ -106,6 +113,7 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     user_data: UserCreateRequest = Body(..., description="Datos del nuevo usuario"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     new_user = await service.create_user(db, obj_in=user_data)
     return ApiResponse[UserBasic](
@@ -128,6 +136,7 @@ async def update_user(
     id: UUID = Path(..., description="ID del usuario a actualizar"),
     user_data: UserUpdateRequest = Body(..., description="Datos completos del usuario"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     updated_user = await service.update_user(db, user_id=id, obj_in=user_data)
     return ApiResponse[UserBasic](
@@ -148,6 +157,7 @@ async def partial_update_user(
     id: UUID = Path(..., description="ID del usuario a actualizar parcialmente"),
     user_data: UserPartialUpdateRequest = Body(..., description="Datos parciales del usuario"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     updated_user = await service.update_user(db, user_id=id, obj_in=user_data)
     return ApiResponse[UserBasic](
@@ -167,6 +177,7 @@ async def activate_user(
     db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del usuario a activar"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     user = await service.activate_user(db, user_id=id)
     return ApiResponse[UserToggleActiveResult](
@@ -187,6 +198,7 @@ async def deactivate_user(
     id: UUID = Path(..., description="ID del usuario a desactivar"),
     reason: Optional[str] = Query(None, description="Motivo de la desactivación"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     user = await service.deactivate_user(db, user_id=id, reason=reason)
     return ApiResponse[UserToggleActiveResult](
@@ -207,6 +219,7 @@ async def change_user_password(
     id: UUID = Path(..., description="ID del usuario"),
     password_data: PasswordChangeRequest = Body(...),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_active_user),
 ):
     await service.change_password(
         db, 
@@ -235,13 +248,13 @@ async def delete_user(
     hard: bool = Query(False, description="Si es True, realiza borrado físico"),
     reason: Optional[str] = Query(None, description="Motivo de la eliminación"),
     service: UserService = Depends(get_user_service),
-    current_user_id: UUID = Depends(get_current_user_id_flexible)
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     deleted_user = await service.delete_user(
         db, 
         user_id=id, 
         hard_delete=hard, 
-        deleted_by=current_user_id,
+        deleted_by=current_user.id,
         reason=reason
     )
     
@@ -263,6 +276,7 @@ async def restore_user(
     db: AsyncSession = Depends(get_db),
     id: UUID = Path(..., description="ID del usuario a restaurar"),
     service: UserService = Depends(get_user_service),
+    current_user: CurrentUser = Depends(get_current_superuser),
 ):
     restored_user = await service.restore_user(db, user_id=id)
     return ApiResponse[UserRestoreResult](
