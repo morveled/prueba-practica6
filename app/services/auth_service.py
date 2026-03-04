@@ -1,18 +1,3 @@
-"""
-Servicio de autenticación.
-
-Equivalencia con la guía .NET (sección 7.11):
-- IAuthService    → Interfaz implícita (duck typing en Python)
-- AuthService     → AuthService
-- AuthController  → Se implementa en endpoints/auth.py
-
-Responsabilidades:
-- Login (autenticar usuario y generar tokens)
-- Registro (crear usuario y generar tokens)
-- Refresh token (renovar access token)
-- Obtener usuario actual desde token
-"""
-
 from datetime import datetime, timezone
 from typing import Optional, Any
 from uuid import UUID

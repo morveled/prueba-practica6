@@ -1,17 +1,3 @@
-"""
-Endpoints de autenticación.
-
-Equivalencia con la guía .NET (sección 7.11.3):
-- IAuthController → auth router
-- Login           → POST /auth/login
-- Register        → POST /auth/register
-- RefreshToken    → POST /auth/refresh-token
-- Me              → GET  /auth/me
-
-Nota: El endpoint de login usa OAuth2PasswordRequestForm para que
-Swagger muestre el formulario de autenticación nativo (sección 7.12).
-"""
-
 from fastapi import APIRouter, Depends, Body, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession

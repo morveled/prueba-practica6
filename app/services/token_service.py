@@ -1,16 +1,3 @@
-"""
-Servicio de tokens JWT.
-
-Equivalencia con la guía .NET (sección 7.10):
-- IJwtService  → Interfaz implícita (Python usa duck typing / protocolos)
-- JwtService   → TokenService
-
-Responsabilidades:
-- Generar par de tokens (access + refresh)
-- Verificar y decodificar tokens
-- Refrescar tokens usando el refresh token
-"""
-
 from datetime import timedelta
 from typing import Tuple
 from uuid import UUID

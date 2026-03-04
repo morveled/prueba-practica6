@@ -11,8 +11,8 @@ from app.core.database import create_db_and_tables
 
 # Importamos TODOS los modelos para que SQLModel.metadata los registre
 # antes de ejecutar create_all. Sin esto, las tablas no se crean.
-from app.models.user import User        # noqa: F401
-from app.models.product import Product  # noqa: F401
+from app.models.user import User       
+from app.models.product import Product  
 
 
 @asynccontextmanager
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 
 
 # Creamos la instancia principal de FastAPI
-# swagger_ui_init_oauth configura el botón "Authorize" en Swagger (sección 7.12)
+# swagger_ui_init_oauth configura el botón "Authorize" en Swagger
 app = FastAPI(
     title="Users & Products API",
     description=(
@@ -34,7 +34,7 @@ app = FastAPI(
         "## Autenticación\n"
         "La API utiliza **JWT (JSON Web Tokens)** con tokens de acceso y refresco.\n\n"
         "1. Regístrate en `POST /api/v1/auth/register` o inicia sesión en `POST /api/v1/auth/login`\n"
-        "2. Usa el botón **Authorize** 🔒 para ingresar tu access token\n"
+        "2. Usa el botón **Authorize** para ingresar tu access token\n"
         "3. Los endpoints protegidos requieren autenticación\n"
     ),
     version="3.0.0",

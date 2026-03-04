@@ -1,10 +1,3 @@
-"""
-Excepciones específicas para el módulo de autenticación y autorización.
-
-Sigue el patrón de excepciones del proyecto:
-AppException → AuthException → excepciones específicas
-"""
-
 from app.core.exceptions.base import AppException
 
 

@@ -1,12 +1,3 @@
-"""
-Inyección de dependencias de FastAPI.
-
-Aquí se configuran todas las dependencias que se inyectan en los endpoints.
-Equivalencia con la guía .NET (sección 7.8 / 7.11):
-- Registro de servicios → Funciones get_*
-- get_current_user      → Extrae el usuario del token JWT (era el TODO pendiente)
-"""
-
 from uuid import UUID
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
@@ -26,7 +17,7 @@ from app.core.exceptions.auth_exceptions import (
     InsufficientPermissionsException,
 )
 
-# ── OAuth2 scheme para Swagger (sección 7.12 de la guía) ──
+# ── OAuth2 scheme para Swagger ──
 # tokenUrl apunta al endpoint de login
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 

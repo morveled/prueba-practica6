@@ -1,14 +1,3 @@
-"""
-DTOs (Data Transfer Objects) para autenticación y manejo de tokens.
-
-Equivalencia con la guía .NET (sección 7.9):
-- LoginRequest → LoginDTO
-- RegisterRequest → Reutiliza UserCreateRequest existente
-- TokenResponse → TokenDTO (respuesta con access + refresh token)
-- RefreshTokenRequest → RefreshTokenDTO
-- TokenData → Claims internos del JWT
-"""
-
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 from uuid import UUID
@@ -22,7 +11,7 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """DTO de respuesta con los tokens generados (equivalente a TokenDTO en .NET)."""
+    """DTO de respuesta con los tokens generados."""
     access_token: str = Field(..., description="Token JWT de acceso")
     refresh_token: str = Field(..., description="Token JWT de refresco")
     token_type: str = Field(default="bearer", description="Tipo de token")

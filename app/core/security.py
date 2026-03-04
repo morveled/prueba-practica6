@@ -1,14 +1,3 @@
-"""
-Módulo de seguridad: hashing de contraseñas y gestión de tokens JWT.
-
-Equivalencia con la guía .NET (secciones 7.10):
-- create_access_token  → JwtService.GenerateAccessToken
-- create_refresh_token → JwtService.GenerateRefreshToken
-- verify_token         → JwtService.ValidateToken
-- get_password_hash    → Hashing con bcrypt
-- verify_password      → Verificación con bcrypt
-"""
-
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
