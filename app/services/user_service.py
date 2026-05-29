@@ -42,11 +42,10 @@ class UserService:
                 raise UserAlreadyExistsException(conflict_type="email", value=obj_in.email)
 
         # 3. Aplicar hash a la contraseña antes de persistir
-        user_data = obj_in.model_dump()
-        user_data["password"] = get_password_hash(obj_in.password)
-        
+        obj_in_hashed = obj_in.model_copy(update={"password": get_password_hash(obj_in.password)})
+
         # 4. Crear el usuario utilizando el repositorio genérico
-        return await self.user_repo.create(db, obj_in=obj_in)
+        return await self.user_repo.create(db, obj_in=obj_in_hashed)
 
     async def authenticate_user(
         self, db: AsyncSession, *, username: str, password: str

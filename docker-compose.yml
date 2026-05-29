@@ -14,35 +14,5 @@ services:
     # Se mapea el puerto del contenedor al host para acceso local desde el .env
     ports:
       - "${POSTGRES_PORT}:5432"
-    networks:
-      - backend_network
-
-  api:
-    build:
-      context: .
-      dockerfile: ./docker/fastapi/Dockerfile
-    container_name: fastapi_app
-    restart: always
-    volumes:
-      - ./app:/home/python/app
-      - ./test_connection.py:/home/python/test_connection.py
-      - ./tests:/home/python/tests
-    env_file:
-      - .env
-    ports:
-      - "${APP_PORT}:8000"
-    depends_on:
-      - db
-    networks:
-      - backend_network
-      # El comando se define aquí en lugar de en el Dockerfile para aprovechar el hot-reload, 
-      # esto no es posible si se pone en un CMD en el Dockerfile.
-    command: >
-      sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-
-
-networks:
-  backend_network:
-    driver: bridge
 
 

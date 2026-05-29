@@ -30,12 +30,16 @@ async def validation_exception_handler(
     formatea bajo el esquema estándar de la aplicación.
     """
     # Podemos extraer más detalle de exc.errors() si quisiéramos ser más específicos
+    errors = [
+        {**e, "ctx": {k: str(v) for k, v in e["ctx"].items()}} if "ctx" in e else e
+        for e in exc.errors()
+    ]
     return JSONResponse(
         status_code=400,
         content=ApiError(
             codigo=400,
             mensaje="Datos inválidos",
-            resultado=exc.errors() # Agregamos el detalle de la validación para que el front sepa qué falló
+            resultado=errors
         ).model_dump()
     )
 

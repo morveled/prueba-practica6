@@ -3,6 +3,7 @@ from typing import Generic, TypeVar, Type, Optional, List, Any, Union, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select, func, or_, and_
 from sqlalchemy import desc, asc
+from pydantic.networks import AnyUrl
 
 # Definición de tipos genéricos para el Modelo y los Esquemas
 ModelType = TypeVar("ModelType", bound=SQLModel)
@@ -89,7 +90,10 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
     async def create(self, db: AsyncSession, *, obj_in: CreateSchemaType) -> ModelType:
         """Crea un nuevo registro en la base de datos."""
-        obj_in_data = obj_in.model_dump()
+        obj_in_data = {
+            k: str(v) if isinstance(v, AnyUrl) else v
+            for k, v in obj_in.model_dump().items()
+        }
         db_obj = self.model(**obj_in_data)
         db.add(db_obj)
         await db.commit()
